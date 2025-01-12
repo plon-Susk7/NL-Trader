@@ -1,1 +1,6 @@
+# Ignores for fronend
 node_modules/
+
+# Ignores for backend
+backend/.venv/
+backend/.env
