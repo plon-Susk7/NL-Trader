@@ -4,3 +4,4 @@ node_modules/
 # Ignores for backend
 backend/.venv/
 backend/.env
+backend/__pycache__/
