@@ -1,11 +1,13 @@
 # app.py
 from flask import Flask, jsonify
 from flask_socketio import SocketIO, send, emit
+from flask_cors import CORS
 import google.generativeai as genai
 import os
 
 app = Flask(__name__)
-socketio = SocketIO(app)
+CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 model = genai.GenerativeModel("gemini-1.5-flash")  # Initialize the model
 
@@ -25,7 +27,7 @@ def handle_message(data):
     global model
     print("Received message: ", data)
     response = model.generate_content(data)
-    send("Received message: " + response.text)
+    send(response.text)
     
 
 if __name__ == '__main__':
