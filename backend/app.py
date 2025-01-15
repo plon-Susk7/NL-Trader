@@ -104,14 +104,14 @@ def hello():
 
 @socketio.on('connect')
 def handle_connect():
-    send("Hey, you are connected!")
+    send("Welcome to Numin platform! I'll help you write python code for financial trading strategies. I don't like chitchats so let's get started!")
 
 @socketio.on('message')
 def handle_message(data):
     global model
     print("Received message: ", data)
     message_to_pass = prompts + '\n' + data
-    response = model.generate_content(data)
+    response = model.generate_content(message_to_pass)
     send(response.text)
    
 

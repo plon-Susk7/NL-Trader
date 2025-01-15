@@ -1,5 +1,15 @@
 import {useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { dark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
+const CodeBlock = (codeString:string) => {
+    return (
+        <SyntaxHighlighter language="python" style={dark}>
+            {codeString}
+        </SyntaxHighlighter>
+    )
+}
 
 export const ChatWindow = () => {
 
@@ -9,6 +19,9 @@ export const ChatWindow = () => {
 
     const handleSubmit = async () =>{
         const message = inputRef.current?.value.trim();
+        if (message) {
+            setMessages((prevMessages) => [...prevMessages, message]);
+        }
         if(message && socket){
             socket.emit("message",message);
             inputRef.current!.value = "";
@@ -40,12 +53,19 @@ export const ChatWindow = () => {
         <div className="flex items-center justify-center h-screen w-screen">
             <div className="flex flex-col border border-white h-5/6 w-5/6">
                 
-                <div className="border border-white flex-grow overflow-y-auto">
+                <div className="flex flex-col border border-white flex-grow overflow-y-auto">
 
                     {messages && messages.map((message,index)=>(
-                        <div key={index} className="flex flex-col p-2 m-2 border rounded-lg border-white inline-block max-w-max">
-                            {message}
-                            </div>
+                        
+                        <div key={index} className={`flex flex-col p-2 m-2 border rounded-lg border-white inline-block max-w-max ${index%2==0 ? "self-start" : "self-end"}`}>
+                            {message.includes("```python") ? (
+                                CodeBlock(message)
+                            ) : (
+                                
+                                <div>{message}</div>
+                            )}
+                        </div>
+                        
                     ))}
                 </div>
                 
