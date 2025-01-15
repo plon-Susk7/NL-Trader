@@ -91,7 +91,7 @@ def exponential_moving_average_prediction(df, span=15):
     return score_5, score_10
 
 You'll have to write a function that will predict only target_5 and target_10.
-Make sure to return python code only nothing else.
+You are required to write code only when a strategy is given by the user, else you talk to the user and ask for the strategy.
 '''
  
 
