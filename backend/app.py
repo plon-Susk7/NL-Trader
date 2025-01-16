@@ -4,19 +4,21 @@ from flask_socketio import SocketIO, send, emit
 from flask_cors import CORS
 import google.generativeai as genai
 import os
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.chains.conversation.memory import ConversationBufferWindowMemory
+from langchain.chains import ConversationChain
+from langchain.prompts import PromptTemplate
 
 app = Flask(__name__)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel("gemini-2.0-flash-exp")  # Initialize the model
+
+model = ChatGoogleGenerativeAI(
+    model = "gemini-2.0-flash-exp",
+)
 
 
-
-prompts = '''
-You are best at writing python code and have good knowledge about finance. You'll assist people in converting their trading strategies into code.
-You are provided with dataset containing information about financial and trading indicators. 
-The dataset contains the following variables related to financial trading and technical indicators.
+dataset_context = '''
 
 Price and Price Relationships
 High_n, Low_n, Open_n, Close_n: High, low, opening, and closing prices for period n.
@@ -89,32 +91,65 @@ def exponential_moving_average_prediction(df, span=15):
     ### End of code
 
     return score_5, score_10
-
-You'll have to write a function that will predict only target_5 and target_10.
-You are required to write code only when a strategy is given by the user, else you talk to the user and ask for the strategy.
 '''
- 
+
+prompt_template = '''
+You are best at writing python code and have good knowledge about finance. You'll assist people in converting their trading strategies into code.
+You are provided with dataset containing information about financial and trading indicators. 
+The dataset contains the following variables related to financial trading and technical indicators.
+Strictly return python code when Human gives a strategy or asks to change the previous strategy, else ask them to provide a strategy.
+
+{dataset_context}
+
+Current conversation:
+{history}
+Human: {input}.
+Assistant: Let me help you with that.
+
+'''
+
+
+# Create the prompt template with correct input variables
+PROMPT = PromptTemplate(
+    input_variables=["history", "input"], 
+    template=prompt_template,
+    partial_variables={"dataset_context": dataset_context}
+)
+
+# Initialize memory
+memory = ConversationBufferWindowMemory(
+    k=10,
+    return_messages=True,
+    memory_key="history"
+)
+
+# Create conversation chain
+conversation = ConversationChain(
+    prompt=PROMPT,
+    llm=model,
+    memory=memory,
+    # verbose=True
+)
 
 @app.route('/hello')
 def hello():
-    global model  # Access the global model variable
-    response = model.generate_content("Explain how AI works")
-    print(response.text)
-    return jsonify({"message": "Whatever!"})
+    response = model.invoke("Explain how AI works")
+    return jsonify({"message": response.content})
 
 @socketio.on('connect')
 def handle_connect():
-    send("Welcome to Numin platform! I'll help you write python code for financial trading strategies. I don't like chitchats so let's get started!")
+    welcome_message = "Welcome to Numin platform! I'll help you write python code for financial trading strategies. I don't like chitchats so let's get started!"
+    send(welcome_message)
 
 @socketio.on('message')
 def handle_message(data):
-    global model
-    print("Received message: ", data)
-    message_to_pass = prompts + '\n' + data
-    response = model.generate_content(message_to_pass)
-    send(response.text)
-   
+    try:
+        response = conversation.predict(input=data)
+        send(response)
+    except Exception as e:
+        error_message = f"An error occurred: {str(e)}"
+        print(error_message)
+        send(error_message)
 
 if __name__ == '__main__':
-    # print(genai.list_models())
-    socketio.run(app,debug=True)
+    socketio.run(app, debug=True)
