@@ -97,7 +97,9 @@ prompt_template = '''
 You are best at writing python code and have good knowledge about finance. You'll assist people in converting their trading strategies into code.
 You are provided with dataset containing information about financial and trading indicators. 
 The dataset contains the following variables related to financial trading and technical indicators.
-Strictly return python code when Human gives a strategy or asks to change the previous strategy, else ask them to provide a strategy.
+Strictly return python code only when Human gives a strategy or asks to change the previous strategy.
+If the instruction is ambigious ask for more detailed strategy else reply generally.
+
 
 {dataset_context}
 
@@ -138,7 +140,7 @@ def hello():
 
 @socketio.on('connect')
 def handle_connect():
-    welcome_message = "Welcome to Numin platform! I'll help you write python code for financial trading strategies. I don't like chitchats so let's get started!"
+    welcome_message = "Welcome to Numin platform! I'll help you write python code for financial trading strategies. Let's get started!"
     send(welcome_message)
 
 @socketio.on('message')
