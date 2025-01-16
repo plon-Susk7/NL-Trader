@@ -12,8 +12,6 @@ from langchain.prompts import PromptTemplate
 app = Flask(__name__)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
-# genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-# model = genai.GenerativeModel("gemini-2.0-flash-exp")  # Initialize the model
 
 model = ChatGoogleGenerativeAI(
     model = "gemini-2.0-flash-exp",
@@ -113,9 +111,9 @@ Assistant: Let me help you with that.
 
 # Create the prompt template with correct input variables
 PROMPT = PromptTemplate(
-    input_variables=["history", "input"],  # Removed 'context'
+    input_variables=["history", "input"], 
     template=prompt_template,
-    partial_variables={"dataset_context": dataset_context}  # Add context as a partial variable
+    partial_variables={"dataset_context": dataset_context}
 )
 
 # Initialize memory
@@ -130,7 +128,7 @@ conversation = ConversationChain(
     prompt=PROMPT,
     llm=model,
     memory=memory,
-    verbose=True
+    # verbose=True
 )
 
 @app.route('/hello')
@@ -146,7 +144,6 @@ def handle_connect():
 @socketio.on('message')
 def handle_message(data):
     try:
-        # Simply pass the input data
         response = conversation.predict(input=data)
         send(response)
     except Exception as e:
