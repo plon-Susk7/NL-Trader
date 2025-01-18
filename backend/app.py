@@ -9,6 +9,14 @@ from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 from langchain.chains import ConversationChain
 from langchain.prompts import PromptTemplate
 
+# Need for agent creation and execution
+
+from langchain_core.messages import HumanMessage
+from langgraph.prebuilt import create_react_agent    
+from langgraph.checkpoint.memory import MemorySaver
+
+
+
 app = Flask(__name__)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -16,7 +24,6 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 model = ChatGoogleGenerativeAI(
     model = "gemini-2.0-flash-exp",
 )
-
 
 dataset_context = '''
 
@@ -93,45 +100,22 @@ def exponential_moving_average_prediction(df, span=15):
     return score_5, score_10
 '''
 
-prompt_template = '''
-You are best at writing python code and have good knowledge about finance. You'll assist people in converting their trading strategies into code.
-You are provided with dataset containing information about financial and trading indicators. 
-The dataset contains the following variables related to financial trading and technical indicators.
-Strictly return python code only when Human gives a strategy or asks to change the previous strategy.
-If the instruction is ambigious ask for more detailed strategy else reply generally.
+SYSTEM_PROMPT = f"""
+You are best at writing python code and have good knowledge about finance. 
+You'll assist people in converting their trading strategies into code.
+You are provided with dataset containing information about financial and technical indicators.
 
-
+Available dataset context:
 {dataset_context}
 
-Current conversation:
-{history}
-Human: {input}.
-Assistant: Let me help you with that.
+Strictly return python code only when Human gives a strategy or asks to change the previous strategy.
+If the instruction is ambiguous ask for more detailed strategy else reply generally.
+"""
 
-'''
-
-
-# Create the prompt template with correct input variables
-PROMPT = PromptTemplate(
-    input_variables=["history", "input"], 
-    template=prompt_template,
-    partial_variables={"dataset_context": dataset_context}
-)
-
-# Initialize memory
-memory = ConversationBufferWindowMemory(
-    k=10,
-    return_messages=True,
-    memory_key="history"
-)
-
-# Create conversation chain
-conversation = ConversationChain(
-    prompt=PROMPT,
-    llm=model,
-    memory=memory,
-    # verbose=True
-)
+memory = MemorySaver()
+tools = []
+agent_executor = create_react_agent(model,tools,checkpointer=memory,state_modifier=SYSTEM_PROMPT)
+config = {"configurable":{"thread_id":"abc123"}}
 
 @app.route('/hello')
 def hello():
@@ -146,8 +130,9 @@ def handle_connect():
 @socketio.on('message')
 def handle_message(data):
     try:
-        response = conversation.predict(input=data)
-        send(response)
+        response = agent_executor.invoke({"messages": [HumanMessage(content=data)]},config)
+
+        send(response['messages'][-1].content)
     except Exception as e:
         error_message = f"An error occurred: {str(e)}"
         print(error_message)
