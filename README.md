@@ -1,50 +1,45 @@
-# React + TypeScript + Vite
+# **NL-Trader**
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**NL-Trader** is a project where my colleague and I aim to develop a chatbot capable of generating Python code for trading strategies based on instructions provided by traders in natural language.  
 
-Currently, two official plugins are available:
+This tool bridges the gap between trading experts and coding by automating strategy implementation.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## Expanding the ESLint configuration
+## **Project Structure**
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+We are using a monorepo structure:  
 
-- Configure the top-level `parserOptions` property like this:
+- **Backend**: Written in Python (Flask), located in the `backend` directory.  
+- **Frontend**: A React.js application (TypeScript), located in the root directory.
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+---
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+## **Setup Instructions**
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+### **Backend Setup**
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
-```
+1. Navigate to the `backend` directory:
+   ```bash
+   cd backend
+   ```
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Start the Flask server:
+   ```bash
+   flask run
+   ```
+
+## **Frontend Setup**
+
+1. Navigate to the root directory.
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
