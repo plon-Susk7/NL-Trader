@@ -1,16 +1,11 @@
 # app.py
 from flask import Flask, jsonify
-from flask_socketio import SocketIO, send, emit
+from flask_socketio import SocketIO, send
 from flask_cors import CORS
-import google.generativeai as genai
-import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
-from langchain.chains import ConversationChain
-from langchain.prompts import PromptTemplate
 
 # Need for agent creation and execution
-
 from langchain_core.messages import HumanMessage
 from langgraph.prebuilt import create_react_agent    
 from langgraph.checkpoint.memory import MemorySaver
@@ -108,7 +103,7 @@ You are provided with dataset containing information about financial and technic
 Available dataset context:
 {dataset_context}
 
-Strictly return python code only when Human gives a strategy or asks to change the previous strategy.
+Strictly return python code only when Human gives a strategy or asks to change the previous strategy and don't provide code explanations.
 If the instruction is ambiguous ask for more detailed strategy else reply generally.
 """
 
