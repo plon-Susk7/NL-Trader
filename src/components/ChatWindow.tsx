@@ -2,6 +2,7 @@ import {useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { dark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import Markdown from "react-markdown";
 
 const CodeBlock = (codeString:string) => {
     let cleanCode = codeString.trim().replace("```python","");
@@ -65,7 +66,7 @@ export const ChatWindow = () => {
                                 CodeBlock(message[0])
                             ) : (
                                 
-                                <div>{message[0]}</div>
+                                <div>{<Markdown>{message[0]}</Markdown>}</div>
                             )}
                         </div>
                         

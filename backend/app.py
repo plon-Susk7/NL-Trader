@@ -105,12 +105,13 @@ Available dataset context:
 
 Strictly return python code only when Human gives a strategy or asks to change the previous strategy and don't provide code explanations.
 If the instruction is ambiguous ask for more detailed strategy else reply generally.
+When generating code just generate code and nothing else.
 """
 
 memory = MemorySaver()
 tools = []
 agent_executor = create_react_agent(model,tools,checkpointer=memory,state_modifier=SYSTEM_PROMPT)
-config = {"configurable":{"thread_id":"abc123"}}
+config = {"configurable":{"thread_id":"abc124"}}
 
 @app.route('/hello')
 def hello():
