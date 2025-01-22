@@ -3,8 +3,6 @@ from flask import Flask, jsonify
 from flask_socketio import SocketIO, send
 from flask_cors import CORS
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains.conversation.memory import ConversationBufferWindowMemory
-
 # Need for agent creation and execution
 from langchain_core.messages import HumanMessage
 from langgraph.prebuilt import create_react_agent    
