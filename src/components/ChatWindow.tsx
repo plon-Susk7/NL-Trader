@@ -2,6 +2,7 @@ import {useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { dark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import axios from "axios";
 import Markdown from "react-markdown";
 
 const CodeBlock = (codeString:string) => {
@@ -31,6 +32,18 @@ export const ChatWindow = () => {
             inputRef.current!.value = "";
         }
         
+    }
+
+    const handleCodeSubmission = async (code:string) => {
+        let cleanCode = code.trim().replace("```python","");
+        cleanCode = cleanCode.replace("```","");
+        const response  = await axios.post("http://127.0.0.1:5000/submit", {
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            "code": cleanCode
+        });
+        console.log(response);
     }
 
     useEffect(()=>{
@@ -63,9 +76,11 @@ export const ChatWindow = () => {
                         
                         <div key={index} className={`flex flex-col p-2 m-2 border rounded-lg border-white inline-block max-w-max w-2/3 ${message[1]==false ? "self-start" : "self-end"}`}>
                             {message[0].includes("```python") ? (
-                                CodeBlock(message[0])
+                                <>
+                                    {CodeBlock(message[0])}
+                                    <button onClick={() => handleCodeSubmission(message[0])}>Run</button>
+                                </>
                             ) : (
-                                
                                 <div>{<Markdown>{message[0]}</Markdown>}</div>
                             )}
                         </div>
