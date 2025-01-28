@@ -1,10 +1,13 @@
 # app.py
-from flask import Flask, jsonify
+from flask import request,Flask, jsonify
 from flask_socketio import SocketIO, send
 from flask_cors import CORS
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 
+import pandas as pd
+import time
+import os
+from numin import NuminAPI
 # Need for agent creation and execution
 from langchain_core.messages import HumanMessage
 from langgraph.prebuilt import create_react_agent    
@@ -13,7 +16,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 model = ChatGoogleGenerativeAI(
@@ -105,17 +108,135 @@ Available dataset context:
 
 Strictly return python code only when Human gives a strategy or asks to change the previous strategy and don't provide code explanations.
 If the instruction is ambiguous ask for more detailed strategy else reply generally.
+When generating code just generate code and nothing else.
 """
 
 memory = MemorySaver()
 tools = []
 agent_executor = create_react_agent(model,tools,checkpointer=memory,state_modifier=SYSTEM_PROMPT)
-config = {"configurable":{"thread_id":"abc123"}}
+config = {"configurable":{"thread_id":"abc124"}}
 
 @app.route('/hello')
 def hello():
     response = model.invoke("Explain how AI works")
     return jsonify({"message": response.content})
+
+def create_function_from_string(function_string):
+    namespace = {}
+    
+    try:
+        # Execute the function string in the namespace
+        exec(function_string, namespace)
+        
+        # Find the function in the namespace
+        function_name = function_string.split('def')[1].split('(')[0].strip()
+        return namespace[function_name]
+    
+    except Exception as e:
+        raise ValueError(f"Error converting function string: {e}")
+    
+@app.route('/visualize',methods=['POST'])
+def visualize_code():
+    exponential_moving_average_prediction = create_function_from_string(request.json['code'])
+    def process_round_data(df, current_round):
+        """Process round data using exponential moving average strategy."""
+        predictions = []
+        for ticker in df['id']:
+            ticker_data = df[df['id'] == ticker].copy()
+            # Get predictions for this ticker
+            target_5, target_10 = exponential_moving_average_prediction(ticker_data)
+            
+            predictions.append(target_5)
+
+        df['predictions_target_5'] = predictions
+        return df.to_json()
+    
+    API_KEY = "aaeb0b4f-9caa-b317-56ed-771b4fdb9fc1"
+    api_client = NuminAPI(api_key=API_KEY)
+    validation_data = api_client.get_data(data_type="validation")
+    result = process_round_data(pd.DataFrame(validation_data), 1)
+    # result = exponential_moving_average_prediction(validation_data)
+    return result
+
+
+
+
+@app.route('/submit', methods=['POST'])
+def submit_code():
+    exponential_moving_average_prediction = create_function_from_string(request.json['code'])
+    def process_round_data(df, current_round):
+        """Process round data using exponential moving average strategy."""
+        predictions = []
+        for ticker in df['id'].unique():
+            ticker_data = df[df['id'] == ticker].copy()
+            # Get predictions for this ticker
+            target_5, target_10 = exponential_moving_average_prediction(ticker_data)
+            predictions.append({
+                "id": ticker,
+                "predictions": target_5,  # Using target_5 prediction
+                "round_no": int(current_round)
+            })
+        return pd.DataFrame(predictions)
+   # Constants
+    API_KEY = "aaeb0b4f-9caa-b317-56ed-771b4fdb9fc1"  # Your API key
+    WAIT_INTERVAL = 5  # Time (in seconds) to wait before checking the round number again
+    NUM_ROUNDS = 1  # Number of rounds to test
+
+    os.makedirs("API_submission_temp", exist_ok=True)
+
+    # Initialize NuminAPI instance
+    api_client = NuminAPI(api_key=API_KEY)
+
+    rounds_completed = 0
+    previous_round = None
+    while rounds_completed < NUM_ROUNDS:
+        try:
+            current_round = api_client.get_current_round()
+            if isinstance(current_round, dict) and "error" in current_round:
+                print(f"Error getting round number: {current_round['error']}")
+                time.sleep(WAIT_INTERVAL)
+                continue
+        
+            print(f"Current Round: {current_round}")
+
+            if current_round != previous_round:
+                # 3. Download round data
+                print("Downloading round data...")
+                round_data = api_client.get_data(data_type="round")
+                if isinstance(round_data, dict) and "error" in round_data:
+                    print(f"Failed to download round data: {round_data['error']}")
+                    time.sleep(WAIT_INTERVAL)
+                    continue
+
+                # 5. Process data and create predictions
+                print("Generating predictions...")
+                predictions_df = process_round_data(round_data, current_round)
+
+                # Save predictions to temporary CSV
+                temp_csv_path = "API_submission_temp/predictions.csv"
+                predictions_df.to_csv(temp_csv_path, index=False)
+
+                print("Submitting predictions...")
+                submission_response = api_client.submit_predictions(temp_csv_path)
+                if isinstance(submission_response, dict) and "error" in submission_response:
+                    print(f"Failed to submit predictions: {submission_response['error']}")
+                else:
+                    print("Predictions submitted successfully!")
+                    rounds_completed += 1
+                    previous_round = current_round
+                    return jsonify({"status": "Predictions submitted successfully"}), 200
+            else:
+                print("Waiting for next round...")
+            
+            os.rmdir("API_submission_temp")
+            time.sleep(WAIT_INTERVAL)
+            
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+            # time.sleep(WAIT_INTERVAL)
+            
+
 
 @socketio.on('connect')
 def handle_connect():
@@ -135,3 +256,4 @@ def handle_message(data):
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
+
