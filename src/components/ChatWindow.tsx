@@ -37,13 +37,13 @@ export const ChatWindow = () => {
     const handleCodeSubmission = async (code:string) => {
         let cleanCode = code.trim().replace("```python","");
         cleanCode = cleanCode.replace("```","");
-        const response  = await axios.post("http://127.0.0.1:5000/submit", {
+        const response  = await axios.post("http://127.0.0.1:5000/visualize", {
             headers: {
                 'Content-Type': 'application/json',
             },
             "code": cleanCode
         });
-        console.log(response);
+        console.log(response); // this is validation data with predicted value
     }
 
     useEffect(()=>{

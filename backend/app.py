@@ -134,6 +134,32 @@ def create_function_from_string(function_string):
     
     except Exception as e:
         raise ValueError(f"Error converting function string: {e}")
+    
+@app.route('/visualize',methods=['POST'])
+def visualize_code():
+    exponential_moving_average_prediction = create_function_from_string(request.json['code'])
+    def process_round_data(df, current_round):
+        """Process round data using exponential moving average strategy."""
+        predictions = []
+        for ticker in df['id']:
+            ticker_data = df[df['id'] == ticker].copy()
+            # Get predictions for this ticker
+            target_5, target_10 = exponential_moving_average_prediction(ticker_data)
+            
+            predictions.append(target_5)
+
+        df['predictions_target_5'] = predictions
+        return df.to_json()
+    
+    API_KEY = "aaeb0b4f-9caa-b317-56ed-771b4fdb9fc1"
+    api_client = NuminAPI(api_key=API_KEY)
+    validation_data = api_client.get_data(data_type="validation")
+    result = process_round_data(pd.DataFrame(validation_data), 1)
+    # result = exponential_moving_average_prediction(validation_data)
+    return result
+
+
+
 
 @app.route('/submit', methods=['POST'])
 def submit_code():
@@ -152,7 +178,7 @@ def submit_code():
             })
         return pd.DataFrame(predictions)
    # Constants
-    API_KEY = "929b302a-5624-8d6c-ccbb-619a0abf3cfb"  # Your API key
+    API_KEY = "aaeb0b4f-9caa-b317-56ed-771b4fdb9fc1"  # Your API key
     WAIT_INTERVAL = 5  # Time (in seconds) to wait before checking the round number again
     NUM_ROUNDS = 1  # Number of rounds to test
 
@@ -202,6 +228,7 @@ def submit_code():
             else:
                 print("Waiting for next round...")
             
+            os.rmdir("API_submission_temp")
             time.sleep(WAIT_INTERVAL)
             
         except Exception as e:
@@ -229,3 +256,4 @@ def handle_message(data):
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
+
