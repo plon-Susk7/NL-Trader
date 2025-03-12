@@ -1,30 +1,52 @@
 # app.py
-from flask import request,Flask, jsonify
+from flask import request, Flask, jsonify, render_template
 from flask_socketio import SocketIO, send
 from flask_cors import CORS
 from langchain_google_genai import ChatGoogleGenerativeAI
-
+import os
+from dotenv import load_dotenv
 import pandas as pd
 import time
-import os
 from numin import NuminAPI
-# Need for agent creation and execution
 from langchain_core.messages import HumanMessage
 from langgraph.prebuilt import create_react_agent    
 from langgraph.checkpoint.memory import MemorySaver
+import traceback
+import json
 
-
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.config['JSON_SORT_KEYS'] = False
+CORS(app, resources={
+    r"/*": {
+        "origins": ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 
-model = ChatGoogleGenerativeAI(
-    model = "gemini-2.0-flash-exp",
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"],
+    async_mode=None,  # Changed from 'threading' to None
+    logger=True,
+    engineio_logger=True,
+    ping_timeout=60000,
+    ping_interval=25000,
+    always_connect=True,  # Added to ensure connections are accepted
+    transports=['websocket', 'polling']  # Explicitly specify transports
 )
 
-dataset_context = '''
+# Get API keys from environment variables
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+NUMIN_API_KEY = os.getenv('NUMIN_API_KEY', "4b0ad9d1-a18f-2be3-da30-29da07c9b20c")
 
+if not GOOGLE_API_KEY:
+    raise ValueError("GOOGLE_API_KEY environment variable is not set")
+
+dataset_context = '''
 Price and Price Relationships
 High_n, Low_n, Open_n, Close_n: High, low, opening, and closing prices for period n.
 High_n-Low_n: Range between high and low prices in period n.
@@ -111,15 +133,16 @@ If the instruction is ambiguous ask for more detailed strategy else reply genera
 When generating code just generate code and nothing else.
 """
 
+model = ChatGoogleGenerativeAI(
+    model = "gemini-2.0-flash-exp",
+    google_api_key=GOOGLE_API_KEY,
+)
+
+# Create agent
 memory = MemorySaver()
 tools = []
-agent_executor = create_react_agent(model,tools,checkpointer=memory,state_modifier=SYSTEM_PROMPT)
+agent_executor = create_react_agent(model, tools, checkpointer=memory, state_modifier=SYSTEM_PROMPT)
 config = {"configurable":{"thread_id":"abc124"}}
-
-@app.route('/hello')
-def hello():
-    response = model.invoke("Explain how AI works")
-    return jsonify({"message": response.content})
 
 def create_function_from_string(function_string):
     namespace = {}
@@ -134,109 +157,307 @@ def create_function_from_string(function_string):
     
     except Exception as e:
         raise ValueError(f"Error converting function string: {e}")
-    
-@app.route('/visualize',methods=['POST'])
-def visualize_code():
-    exponential_moving_average_prediction = create_function_from_string(request.json['code'])
-    def process_round_data(df, current_round):
-        """Process round data using exponential moving average strategy."""
-        predictions = []
-        for ticker in df['id']:
-            ticker_data = df[df['id'] == ticker].copy()
-            # Get predictions for this ticker
-            target_5, target_10 = exponential_moving_average_prediction(ticker_data)
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/test')
+def test():
+    return jsonify({"status": "Server is running"}), 200
+
+@app.route('/backtest', methods=['POST'])
+def run_backtest():
+    try:
+        if not request.json or 'code' not in request.json:
+            return jsonify({'error': 'No code provided in request'}), 400
+
+        date = "2025-01-03"  # Set date explicitly in YYYY-MM-DD format
+        print(f"Received backtest request for date: {date}")
+        
+        try:
+            exponential_moving_average_prediction = create_function_from_string(request.json['code'])
+            print("Successfully created strategy function")
             
-            predictions.append(target_5)
+            def process_round_data(df, current_round):
+                """Process round data using exponential moving average strategy."""
+                try:
+                    print("\nDEBUG - Process Round Data Input:")
+                    print(f"Type of input data: {type(df)}")
+                    
+                    if not isinstance(df, pd.DataFrame):
+                        print("Converting input to DataFrame...")
+                        df = pd.DataFrame(df)
+                    
+                    print(f"DataFrame shape: {df.shape}")
+                    print(f"DataFrame columns: {df.columns.tolist()}")
+                    
+                    # Initialize empty list for predictions
+                    predictions = []
+                    
+                    # Process each ticker
+                    for ticker in df['id'].unique():
+                        ticker_data = df[df['id'] == ticker].copy()
+                        # Get predictions for this ticker
+                        target_5, target_10 = exponential_moving_average_prediction(ticker_data)
+                        predictions.append({
+                            "id": ticker,
+                            "predictions": float(target_5),  # Ensure prediction is float
+                            "round_no": int(current_round)  # Use current_round as specified
+                        })
+                    
+                    # Convert to DataFrame
+                    predictions_df = pd.DataFrame(predictions)
+                    
+                    # Force column types
+                    predictions_df['id'] = predictions_df['id'].astype(str)
+                    predictions_df['predictions'] = predictions_df['predictions'].astype(float)
+                    predictions_df['round_no'] = predictions_df['round_no'].astype(int)
+                    
+                    return predictions_df
+                except Exception as e:
+                    print(f"Error in process_round_data: {str(e)}")
+                    print("Traceback:", traceback.format_exc())
+                    raise
 
-        df['predictions_target_5'] = predictions
-        return df.to_json()
-    
-    API_KEY = "aaeb0b4f-9caa-b317-56ed-771b4fdb9fc1"
-    api_client = NuminAPI(api_key=API_KEY)
-    validation_data = api_client.get_data(data_type="validation")
-    result = process_round_data(pd.DataFrame(validation_data), 1)
-    # result = exponential_moving_average_prediction(validation_data)
-    return result
+            # Initialize API and get data
+            api_client = NuminAPI(api_key=NUMIN_API_KEY)
+            
+            print(f"Fetching validation data for date: {date}")
+            validation_df = api_client.fetch_validation_data(date)  # Returns DataFrame
+            
+            if validation_df is None or validation_df.empty:
+                return jsonify({'error': 'No validation data available'}), 400
+            
+            print("Running backtest...")
+            backtest_results = api_client.run_backtest(
+                user_strategy=process_round_data,
+                date=date,
+                result_type="results"
+            )
+            print("Backtest completed. Results:", json.dumps(backtest_results, indent=2))
+            print(backtest_results)
+            
+            selected_asset = request.json.get('selected_asset')
+            available_assets = list(backtest_results.keys())
+            
+            if not selected_asset or selected_asset not in available_assets:
+                selected_asset = available_assets[0] if available_assets else None
 
+            if not selected_asset:
+                return jsonify({'error': 'No assets available'}), 500
 
+            # Get asset specific data
+            asset_df = validation_df[validation_df['id'] == selected_asset].copy()
+            asset_df['row_num'] = asset_df['row_num'].astype(int)
+            asset_df = asset_df.sort_values('row_num')
+
+            # Process trades from backtest results
+            asset_trades = backtest_results[selected_asset]
+            print(f"Processing trades for asset: {selected_asset}")
+            print(f"Asset trades data: {json.dumps(asset_trades, indent=2)}")
+            
+            # Get the date-specific data
+            date_key = '03-Jan-2025'
+            if date_key not in asset_trades:
+                return jsonify({'error': f'No data available for date {date_key}'}), 400
+                
+            trades_data = asset_trades[date_key]
+            print(f"Trades data for {date_key}: {json.dumps(trades_data, indent=2)}")
+
+            # Process trades and rewards
+            trades = []
+            if trades_data.get('acts') and trades_data.get('rew'):
+                print("Processing trades data:")
+                print(f"Acts: {trades_data['acts']}")
+                print(f"Rewards: {trades_data['rew']}")
+
+                # Create mappings for acts and rewards using trade_id as key
+                acts_map = {}
+                for act in trades_data['acts']:
+                    # act structure: [action, param1, param2, trade_id]
+                    if len(act) >= 4:
+                        action, _, _, trade_id = act
+                        acts_map[trade_id] = action
+
+                rew_map = {}
+                for rew in trades_data['rew']:
+                    # rew structure: [trade_id, reward_value, round_no]
+                    if len(rew) >= 3:
+                        trade_id, reward, round_no = rew
+                        rew_map[trade_id] = (reward, round_no)
+
+                print(f"Acts mapping: {acts_map}")
+                print(f"Rewards mapping: {rew_map}")
+
+                # Process each trade that has both an action and a reward
+                for trade_id in set(acts_map.keys()) & set(rew_map.keys()):
+                    action = acts_map[trade_id]  # Get action (1=buy, -1=sell)
+                    reward, round_no = rew_map[trade_id]  # Get reward and round number
+                    
+                    # Get price at the trade point
+                    trade_data = asset_df[asset_df['row_num'] == round_no]
+                    if not trade_data.empty:
+                        price = float(trade_data['Close_n'].iloc[0])
+                        
+                        trade_info = {
+                            'period': int(round_no),
+                            'action': int(action),
+                            'price': float(price),
+                            'return': float(reward),
+                            'return_pct': float(reward) * 100,
+                            'trade_type': 'BUY' if action == 1 else 'SELL',
+                            'trade_id': str(trade_id)
+                        }
+                        
+                        print(f"Adding trade: {trade_info}")
+                        trades.append(trade_info)
+
+            print(f"Final processed trades: {json.dumps(trades, indent=2)}")
+            print(f"Total return from trades_data: {trades_data.get('tot')}")
+
+            # Initialize price data with the total return from backtest results
+            price_data = {
+                'Open_n': asset_df.set_index('row_num')['Open_n'].to_dict(),
+                'High_n': asset_df.set_index('row_num')['High_n'].to_dict(),
+                'Low_n': asset_df.set_index('row_num')['Low_n'].to_dict(),
+                'Close_n': asset_df.set_index('row_num')['Close_n'].to_dict(),
+                'SMA_10': asset_df.set_index('row_num')['SMA_10'].to_dict() if 'SMA_10' in asset_df.columns else {},
+                'SMA_20': asset_df.set_index('row_num')['SMA_20'].to_dict() if 'SMA_20' in asset_df.columns else {},
+                'trades': trades,
+                'total_return': float(trades_data.get('tot', 0.0))
+            }
+
+            response_data = {
+                'data': price_data,
+                'available_assets': available_assets,
+                'selected_asset': selected_asset,
+                'trades_summary': {
+                    'total_trades': len(trades),
+                    'buy_trades': sum(1 for t in trades if t['action'] == 1),
+                    'sell_trades': sum(1 for t in trades if t['action'] == -1),
+                    'total_return': float(trades_data.get('tot', 0.0))
+                }
+            }
+
+            print(f"Final response data: {json.dumps(response_data, indent=2)}")
+            return jsonify(response_data)
+                
+        except Exception as api_error:
+            print(f"API Error: {str(api_error)}")
+            print("Full traceback:", traceback.format_exc())
+            return jsonify({'error': f'API Error: {str(api_error)}'}), 500
+            
+    except Exception as e:
+        print(f"Exception in /backtest: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/submit', methods=['POST'])
 def submit_code():
-    exponential_moving_average_prediction = create_function_from_string(request.json['code'])
-    def process_round_data(df, current_round):
-        """Process round data using exponential moving average strategy."""
-        predictions = []
-        for ticker in df['id'].unique():
-            ticker_data = df[df['id'] == ticker].copy()
-            # Get predictions for this ticker
-            target_5, target_10 = exponential_moving_average_prediction(ticker_data)
-            predictions.append({
-                "id": ticker,
-                "predictions": target_5,  # Using target_5 prediction
-                "round_no": int(current_round)
-            })
-        return pd.DataFrame(predictions)
-   # Constants
-    API_KEY = "aaeb0b4f-9caa-b317-56ed-771b4fdb9fc1"  # Your API key
-    WAIT_INTERVAL = 5  # Time (in seconds) to wait before checking the round number again
-    NUM_ROUNDS = 1  # Number of rounds to test
-
-    os.makedirs("API_submission_temp", exist_ok=True)
-
-    # Initialize NuminAPI instance
-    api_client = NuminAPI(api_key=API_KEY)
-
-    rounds_completed = 0
-    previous_round = None
-    while rounds_completed < NUM_ROUNDS:
-        try:
-            current_round = api_client.get_current_round()
-            if isinstance(current_round, dict) and "error" in current_round:
-                print(f"Error getting round number: {current_round['error']}")
-                time.sleep(WAIT_INTERVAL)
-                continue
+    try:
+        # Create function from submitted code
+        exponential_moving_average_prediction = create_function_from_string(request.json['code'])
         
-            print(f"Current Round: {current_round}")
-
-            if current_round != previous_round:
-                # 3. Download round data
-                print("Downloading round data...")
-                round_data = api_client.get_data(data_type="round")
-                if isinstance(round_data, dict) and "error" in round_data:
-                    print(f"Failed to download round data: {round_data['error']}")
-                    time.sleep(WAIT_INTERVAL)
-                    continue
-
-                # 5. Process data and create predictions
-                print("Generating predictions...")
-                predictions_df = process_round_data(round_data, current_round)
-
-                # Save predictions to temporary CSV
-                temp_csv_path = "API_submission_temp/predictions.csv"
-                predictions_df.to_csv(temp_csv_path, index=False)
-
-                print("Submitting predictions...")
-                submission_response = api_client.submit_predictions(temp_csv_path)
-                if isinstance(submission_response, dict) and "error" in submission_response:
-                    print(f"Failed to submit predictions: {submission_response['error']}")
-                else:
-                    print("Predictions submitted successfully!")
-                    rounds_completed += 1
-                    previous_round = current_round
-                    return jsonify({"status": "Predictions submitted successfully"}), 200
-            else:
-                print("Waiting for next round...")
+        def process_round_data(df, current_round):
+            """Process round data using exponential moving average strategy."""
+            print("\nDEBUG - Process Round Data Input:")
+            print(f"Type of input data: {type(df)}")
             
+            # Convert input to DataFrame if it's a list
+            if isinstance(df, list):
+                print("Converting list to DataFrame...")
+                df = pd.DataFrame(df)
+            
+            print(f"DataFrame shape: {df.shape}")
+            print(f"DataFrame columns: {df.columns.tolist()}")
+            
+            # Initialize empty list for predictions
+            predictions = []
+            
+            # Process each ticker
+            for ticker in df['id'].unique():
+                ticker_data = df[df['id'] == ticker].copy()
+                # Get predictions for this ticker
+                target_5, target_10 = exponential_moving_average_prediction(ticker_data)
+                predictions.append({
+                    "id": ticker,
+                    "predictions": float(target_5),  # Ensure prediction is float
+                    "round_no": int(current_round)  # Ensure round_no is int
+                })
+            
+            # Convert to DataFrame
+            predictions_df = pd.DataFrame(predictions)
+            
+            print("\nDEBUG - Predictions Output:")
+            print(f"Predictions DataFrame shape: {predictions_df.shape}")
+            print(f"Predictions columns: {predictions_df.columns.tolist()}")
+            print(f"First prediction: {predictions_df.iloc[0].to_dict() if len(predictions_df) > 0 else 'Empty'}")
+            
+            # Verify required columns exist
+            required_cols = {"id", "predictions", "round_no"}
+            if not required_cols.issubset(predictions_df.columns):
+                missing = required_cols - set(predictions_df.columns)
+                print(f"ERROR: Missing required columns: {missing}")
+                raise ValueError(f"Predictions DataFrame missing required columns: {missing}")
+            
+            return predictions_df
+
+        # Initialize API and get data
+        API_KEY = "aaeb0b4f-9caa-b317-56ed-771b4fdb9fc1"
+        api_client = NuminAPI(api_key=API_KEY)
+        
+        # Get current round
+        current_round = api_client.get_current_round()
+        if isinstance(current_round, dict) and "error" in current_round:
+            return jsonify({"error": f"Failed to get round: {current_round['error']}"}), 500
+            
+        # Get round data
+        round_data = api_client.get_data(data_type="round")
+        if isinstance(round_data, dict) and "error" in round_data:
+            return jsonify({"error": f"Failed to get round data: {round_data['error']}"}), 500
+
+        # Process predictions
+        predictions = process_round_data(pd.DataFrame(round_data), current_round)
+        
+        # Create temp directory and save predictions
+        os.makedirs("API_submission_temp", exist_ok=True)
+        temp_csv_path = "API_submission_temp/predictions.csv"
+        pd.DataFrame(predictions).to_csv(temp_csv_path, index=False)
+
+        # Submit predictions
+        submission_response = api_client.submit_predictions(temp_csv_path)
+        
+        # Clean up temp file
+        if os.path.exists(temp_csv_path):
+            os.remove(temp_csv_path)
+        if os.path.exists("API_submission_temp"):
             os.rmdir("API_submission_temp")
-            time.sleep(WAIT_INTERVAL)
-            
-        except Exception as e:
-            print(f"An error occurred: {str(e)}")
-            return jsonify({"error": str(e)}), 500
-            # time.sleep(WAIT_INTERVAL)
-            
 
+        if isinstance(submission_response, dict) and "error" in submission_response:
+            return jsonify({"error": f"Submission failed: {submission_response['error']}"}), 500
+            
+        return jsonify({"status": "Strategy submitted successfully", "round": current_round}), 200
+
+    except ValueError as ve:
+        # Clean up temp files in case of error
+        if os.path.exists("API_submission_temp/predictions.csv"):
+            os.remove("API_submission_temp/predictions.csv")
+        if os.path.exists("API_submission_temp"):
+            os.rmdir("API_submission_temp")
+        error_details = traceback.format_exc()
+        print(f"ValueError in /submit: {str(ve)}\nDetails: {error_details}")
+        return jsonify({"error": f"ValueError: {str(ve)}", 'details': error_details}), 400 # Return 400 for bad code
+
+    except Exception as e:
+        # Clean up temp files in case of error
+        if os.path.exists("API_submission_temp/predictions.csv"):
+            os.remove("API_submission_temp/predictions.csv")
+        if os.path.exists("API_submission_temp"):
+            os.rmdir("API_submission_temp")
+        error_details = traceback.format_exc()
+        print(f"Exception in /submit: {str(e)}\nDetails: {error_details}")
+        return jsonify({"error": str(e), 'details': error_details}), 500
 
 @socketio.on('connect')
 def handle_connect():
@@ -254,6 +475,16 @@ def handle_message(data):
         print(error_message)
         send(error_message)
 
-if __name__ == '__main__':
-    socketio.run(app, debug=True)
+@app.route('/hello')
+def hello():
+    response = model.invoke("Explain how AI works")
+    return jsonify({"message": response.content})
 
+if __name__ == '__main__':
+    socketio.run(app, 
+        host='127.0.0.1',
+        port=5000,
+        debug=True,
+        allow_unsafe_werkzeug=True,
+        use_reloader=False  # Disable reloader to prevent duplicate Socket.IO instances
+    )

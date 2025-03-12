@@ -1,0 +1,27 @@
+Metadata-Version: 2.2
+Name: numin
+Version: 1.0.3
+Summary: numin package
+Author-email: Ashu <ashu19.iiitd@gmail.com>
+Project-URL: Homepage, https://github.com/pypa/sampleproject
+Project-URL: Issues, https://github.com/pypa/sampleproject/issues
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: anvil_uplink>=0.5.1
+Requires-Dist: import_ipynb>=0.1.4
+Requires-Dist: ipython>=8.12.3
+Requires-Dist: numpy==1.24.3
+Requires-Dist: pandas>=1.5.3
+Requires-Dist: pandas_ta>=0.3.14b0
+Requires-Dist: pytz>=2024.1
+Requires-Dist: Requests>=2.32.3
+Requires-Dist: scikit_learn>=1.6.1
+Requires-Dist: yfinance>=0.2.42
+
+# numin Package
+
+Package wrapping NuminAPI
