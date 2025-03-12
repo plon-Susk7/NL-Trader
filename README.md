@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # **NL-Trader**
 
 **NL-Trader** is a project where my colleague and I aim to develop a chatbot capable of generating Python code for trading strategies based on instructions provided by traders in natural language.  
