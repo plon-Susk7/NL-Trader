@@ -27,7 +27,10 @@ We are using a monorepo structure:
    ```bash
    pip install -r requirements.txt
    ```
-3. Start the Flask server:
+
+3. Copy contents of .env.local and paste your `Google API KEY` in a new file called .env
+   
+4. Start the Flask server:
    ```bash
    flask run
    ```
